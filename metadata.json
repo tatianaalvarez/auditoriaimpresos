@@ -1,0 +1,6 @@
+{
+  "name": "LithoAudit ISO 19011 - Auditorías Litográficas",
+  "description": "Plataforma integral para gestión de auditorías internas en la industria litográfica bajo ISO 19011:2026 e ISO 9001: gestión de auditores, matriz de riesgos gráficos, cronograma interactivo, actas de apertura con firma digital y auditoría de órdenes de producción.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
