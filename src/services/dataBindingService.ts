@@ -3,7 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AppAuditState, Auditor } from '../types/audit';
+import { 
+  AppAuditState, 
+  Auditor, 
+  AuditChecklist, 
+  FinalAuditReport, 
+  DetailedNonConformity, 
+  FinalReportFinding, 
+  CorrectiveActionPlan 
+} from '../types/audit';
 
 /**
  * Service to handle dynamic reactive data-binding and cascade updates
@@ -437,5 +445,261 @@ export const dataBindingService = {
       deletedAuditorName: delName,
       docsUpdated
     };
+  },
+
+  /**
+   * Conexión Lista de Chequeo e Informe Final:
+   * Las no conformidades registradas con respuesta "No" en la lista de chequeo
+   * fluyen y se alimentan automáticamente en el informe final de auditoría,
+   * estructuradas con los 6 campos obligatorios + evidencias fotográficas.
+   */
+  syncChecklistToFinalReport(checklist: AuditChecklist, currentReport: FinalAuditReport): FinalAuditReport {
+    const nonCompliantItems = checklist.items.filter(item => item.isCompliant === false);
+    const existingDetailed = currentReport.detailedNonConformities || [];
+
+    // Riesgos contextuales específicos para artes gráficas y prensa litográfica
+    const getContextualRisk = (category: string, criterion: string) => {
+      if (category.includes('Color') || criterion.includes('12647')) {
+        return 'Variación tonal Delta E > 3.0 en pliegos impresos, desbalance agua-tinta, riesgo de rechazo por el cliente y sobreconsumo de tintas Pantone.';
+      }
+      if (category.includes('Planchas') || category.includes('CTP')) {
+        return 'Rayado o velado de planchas en batería, descalce en tiraje, paradas prolongadas de prensa y desperdicio de sustrato litográfico.';
+      }
+      if (category.includes('Registro') || category.includes('Calce')) {
+        return 'Fuera de registro micrométrico en cuatricromía (> 0.05 mm), pérdida de nitidez en tipografías y pliegos no conformes.';
+      }
+      if (category.includes('Desperdicios') || category.includes('Mermas')) {
+        return 'Exceso de merma sobre el 5% presupuestado en orden de producción, sobrecosto operativo y retraso en fecha pactada de entrega.';
+      }
+      if (category.includes('Seguridad') || category.includes('EPP')) {
+        return 'Riesgo inminente de atrapamiento en rodillos en movimiento, exposición a solventes orgánicos volátiles y sanción en SG-SST.';
+      }
+      return 'Riesgo de reproceso en taller de prensa, desviación de calidad en el producto terminado o demora en tiempos de entrega.';
+    };
+
+    // Acciones correctivas contextuales acordes a la norma ISO 19011 e ISO 9001
+    const getContextualAction = (category: string, recommendation?: string) => {
+      if (recommendation && recommendation.trim()) return recommendation.trim();
+      if (category.includes('Color')) {
+        return 'Detener tiraje, re-calibrar densidad con espectrofotómetro según ISO 12647-2 y ajustar porcentaje de alcohol isopropílico/fountain.';
+      }
+      if (category.includes('Planchas')) {
+        return 'Inspeccionar mordazas de cilindro porta-planchas, regenerar plancha CTP no conforme y verificar paralelismo de pinzas.';
+      }
+      if (category.includes('Registro')) {
+        return 'Ajustar calce micrométrico circunferencial y axial en consola central Heidelberg, registrar pliego testigo firmado.';
+      }
+      if (category.includes('Seguridad')) {
+        return 'Suspender operación hasta que el operario cuente con el EPP obligatorio y activar guardas de seguridad en batería.';
+      }
+      return 'Implementar ajuste técnico correctivo inmediato, registrar en bitácora de prensa y efectuar segunda verificación con el auditor.';
+    };
+
+    // Mapear cada aspecto "No" a un hallazgo detallado
+    const mappedDetailed: DetailedNonConformity[] = nonCompliantItems.map((item) => {
+      const existing = existingDetailed.find(
+        d => d.checklistItemId === item.id || d.id === `nc-${item.id}` || d.itemNumber === item.itemNumber
+      );
+
+      const detection = item.detectionDescription?.trim() || existing?.detectionDescription?.trim() ||
+        (item.evidenceObservation?.trim()
+          ? `Detectado en estación de prensa: ${item.evidenceObservation.trim()}`
+          : `Durante la inspección técnica al puesto del operario en ${checklist.pressMachine}, se constató incumplimiento en: "${item.aspectToVerify}".`);
+
+      const breached = item.breachedRequirement?.trim() || existing?.breachedRequirement?.trim() ||
+        item.criterion || 'ISO 9001:2015 Numeral 8.5.1 / ISO 12647-2';
+
+      const risk = item.processRisk?.trim() || existing?.processRisk?.trim() ||
+        getContextualRisk(item.category, item.criterion);
+
+      const action = item.proposedAction?.trim() || existing?.proposedAction?.trim() ||
+        getContextualAction(item.category, item.recommendation);
+
+      const responsible = item.responsiblePerson?.trim() || existing?.responsiblePerson?.trim() ||
+        `${checklist.auditeeName} (${checklist.auditeeJobTitle || 'Operario de Prensa Litográfica'})`;
+
+      const deadline = item.deadline?.trim() || existing?.deadline?.trim() || '2026-03-01';
+
+      // Combinar fotos de la lista de chequeo con las añadidas directamente en el informe
+      const combinedPhotos = [...(item.photos || [])];
+      if (existing?.photos) {
+        existing.photos.forEach(ep => {
+          if (!combinedPhotos.some(cp => cp.id === ep.id)) {
+            combinedPhotos.push(ep);
+          }
+        });
+      }
+
+      return {
+        id: existing?.id || `nc-${item.id}`,
+        checklistItemId: item.id,
+        itemNumber: item.itemNumber,
+        detectionDescription: detection,
+        breachedRequirement: breached,
+        processRisk: risk,
+        proposedAction: action,
+        responsiblePerson: responsible,
+        deadline: deadline,
+        classification: existing?.classification || 'NC',
+        photos: combinedPhotos,
+        status: existing?.status || 'Pendiente',
+        category: item.category
+      };
+    });
+
+    // Conservar hallazgos manuales que hayan sido creados directamente en el informe final
+    const manualNCs = existingDetailed.filter(
+      d => !d.checklistItemId && !nonCompliantItems.some(i => `nc-${i.id}` === d.id)
+    );
+
+    const allDetailed = [...mappedDetailed, ...manualNCs];
+
+    // Sincronizar array de no conformidades estándar (FO-MCO-22)
+    const syncedNonConformities: FinalReportFinding[] = allDetailed.map((d) => ({
+      id: d.id,
+      finding: d.detectionDescription,
+      classification: (d.classification.startsWith('NC') || d.classification === 'NC') ? 'NC' : 'OBS',
+      breachedRequirement: d.breachedRequirement
+    }));
+
+    // Sincronizar planes de acción correctiva estándar (FO-MCO-22)
+    const syncedActionPlans: CorrectiveActionPlan[] = allDetailed.map((d, i) => ({
+      id: `act-${d.id}`,
+      nonConformityId: `NC-0${i + 1}`,
+      findingDescription: d.detectionDescription,
+      rootCauseAnalysis: `Desviación en puesto de prensa: ${d.processRisk}`,
+      correctiveAction: d.proposedAction,
+      responsiblePerson: d.responsiblePerson,
+      commitmentDeadline: d.deadline,
+      status: d.status
+    }));
+
+    // Asegurar que el operario evaluado figure en el personal entrevistado
+    const interviewed = [...currentReport.interviewedPersonnel];
+    const operatorLabel = `${checklist.auditeeName} (${checklist.auditeeJobTitle || 'Operario de Prensa'})`;
+    if (!interviewed.some(p => p.toLowerCase().includes(checklist.auditeeName.toLowerCase().trim()))) {
+      interviewed.push(operatorLabel);
+    }
+
+    return {
+      ...currentReport,
+      detailedNonConformities: allDetailed,
+      nonConformities: syncedNonConformities,
+      actionPlans: syncedActionPlans,
+      interviewedPersonnel: interviewed,
+      auditeeLeaderName: checklist.auditeeName,
+      auditeeLeaderJobTitle: checklist.auditeeJobTitle,
+      auditDate: checklist.auditDate || currentReport.auditDate
+    };
+  },
+
+  /**
+   * Sincronización Automática de Datos Generales:
+   * Si se actualiza información del operario de prensa, fechas, máquina o ciclo en un módulo,
+   * se refleja automáticamente en todas las actas y documentos del sistema.
+   */
+  cascadeGeneralAuditInfo(
+    state: AppAuditState,
+    updates: {
+      auditeeName?: string;
+      auditeeJobTitle?: string;
+      pressMachine?: string;
+      auditDate?: string;
+      cycle?: string;
+      code?: string;
+      version?: string;
+      approvalDate?: string;
+      editorResponsible?: string;
+    }
+  ): {
+    newState: AppAuditState;
+    updatedDocs: string[];
+  } {
+    const updatedDocs: string[] = [];
+
+    // 1. Checklist (FO-MCO-19)
+    let newChecklist = { ...state.checklist };
+    if (updates.auditeeName) newChecklist.auditeeName = updates.auditeeName;
+    if (updates.auditeeJobTitle) newChecklist.auditeeJobTitle = updates.auditeeJobTitle;
+    if (updates.pressMachine) newChecklist.pressMachine = updates.pressMachine;
+    if (updates.auditDate) newChecklist.auditDate = updates.auditDate;
+    if (updates.cycle) newChecklist.cycle = updates.cycle;
+    updatedDocs.push('Lista de Chequeo (FO-MCO-19)');
+
+    // 2. Opening Act (FO-MCO-20)
+    let newOpening = { ...state.openingAct };
+    if (updates.auditeeName) newOpening.auditeeLeaderName = updates.auditeeName;
+    if (updates.auditeeJobTitle) {
+      newOpening.auditeeLeaderJobTitle = updates.auditeeJobTitle;
+      newOpening.targetJobTitle = updates.auditeeJobTitle;
+    }
+    if (updates.auditDate) newOpening.date = updates.auditDate;
+    if (updates.cycle) newOpening.auditCycle = updates.cycle;
+    updatedDocs.push('Acta de Apertura (FO-MCO-20)');
+
+    // 3. Closing Act (FO-MCO-21)
+    let newClosing = { ...state.closingAct };
+    if (updates.auditeeName) newClosing.auditeeLeaderName = updates.auditeeName;
+    if (updates.auditeeJobTitle) newClosing.auditeeLeaderJobTitle = updates.auditeeJobTitle;
+    if (updates.auditDate) newClosing.date = updates.auditDate;
+    updatedDocs.push('Acta de Cierre (FO-MCO-21)');
+
+    // 4. Audit Plan (FO-MCO-18)
+    let newPlan = { ...state.auditPlan };
+    if (updates.auditeeName) newPlan.auditeeLeaderName = updates.auditeeName;
+    if (updates.auditeeJobTitle) {
+      newPlan.auditeeLeaderJobTitle = updates.auditeeJobTitle;
+      newPlan.targetJob = updates.auditeeJobTitle;
+    }
+    if (updates.cycle) newPlan.auditCycle = updates.cycle;
+    updatedDocs.push('Plan de Auditoría (FO-MCO-18)');
+
+    // 5. Audit Program (FO-MCO-17)
+    let newProg = { ...state.auditProgram };
+    if (updates.cycle) newProg.cycle = updates.cycle;
+    updatedDocs.push('Programa de Auditoría (FO-MCO-17)');
+
+    // 6. Final Report (FO-MCO-22)
+    let newReport = { ...state.finalReport };
+    if (updates.auditeeName) newReport.auditeeLeaderName = updates.auditeeName;
+    if (updates.auditeeJobTitle) {
+      newReport.auditeeLeaderJobTitle = updates.auditeeJobTitle;
+      newReport.targetJob = updates.auditeeJobTitle;
+    }
+    if (updates.auditDate) newReport.auditDate = updates.auditDate;
+    updatedDocs.push('Informe Final (FO-MCO-22)');
+
+    // 7. Production Orders
+    let newOrders = state.productionOrders.map(order => {
+      let changed = false;
+      let opName = order.pressOperatorName;
+      let mach = order.pressMachineId;
+      if (updates.auditeeName && opName) {
+        opName = updates.auditeeName;
+        changed = true;
+      }
+      if (updates.pressMachine && mach) {
+        mach = updates.pressMachine;
+        changed = true;
+      }
+      return changed ? { ...order, pressOperatorName: opName, pressMachineId: mach } : order;
+    });
+
+    // Also auto-sync non-conformities from checklist to final report
+    newReport = this.syncChecklistToFinalReport(newChecklist, newReport);
+
+    const newState: AppAuditState = {
+      ...state,
+      checklist: newChecklist,
+      openingAct: newOpening,
+      closingAct: newClosing,
+      auditPlan: newPlan,
+      auditProgram: newProg,
+      finalReport: newReport,
+      productionOrders: newOrders,
+      lastPersisted: new Date().toISOString()
+    };
+
+    return { newState, updatedDocs };
   }
 };

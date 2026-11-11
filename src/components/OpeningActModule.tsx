@@ -18,11 +18,20 @@ import {
   MapPin,
   ClipboardList,
   UserPlus,
-  Users
+  Users,
+  AlertTriangle,
+  Camera,
+  ExternalLink,
+  ShieldAlert,
+  Sparkles,
+  Link2,
+  CheckCircle2,
+  Image as ImageIcon
 } from 'lucide-react';
-import { OpeningAct, ClosingAct, FinalAuditReport, Auditor, CorrectiveActionPlan } from '../types/audit';
+import { OpeningAct, ClosingAct, FinalAuditReport, Auditor, CorrectiveActionPlan, DetailedNonConformity, AuditPhotoEvidence } from '../types/audit';
 import { DigitalSignatureModal } from './DigitalSignatureModal';
 import { DocumentHeader } from './DocumentHeader';
+import { PhotoEvidenceUploader } from './PhotoEvidenceUploader';
 
 interface OpeningActModuleProps {
   openingAct: OpeningAct;
@@ -105,9 +114,170 @@ export const OpeningActModule: React.FC<OpeningActModuleProps> = ({
   };
 
   const handleSaveReport = () => {
-    onSaveFinalReport(reportData);
+    // Ensure detailedNonConformities is saved into the report object
+    const finalToSave: FinalAuditReport = {
+      ...reportData,
+      detailedNonConformities: effectiveDetailedNCs
+    };
+    onSaveFinalReport(finalToSave);
     setIsEditing(false);
     alert('Informe Final de Auditoría (FO-MCO-22) guardado exitosamente.');
+  };
+
+  // Helper to ensure detailedNonConformities is always accessible
+  const effectiveDetailedNCs: DetailedNonConformity[] = 
+    (reportData.detailedNonConformities && reportData.detailedNonConformities.length > 0)
+      ? reportData.detailedNonConformities
+      : (reportData.nonConformities || []).map((nc, idx) => {
+          const plan = reportData.actionPlans?.find(p => p.nonConformityId === nc.id || p.id === nc.id) || reportData.actionPlans?.[idx];
+          return {
+            id: nc.id || `dnc-${idx + 1}`,
+            itemNumber: idx === 0 ? 10 : 17,
+            classification: (nc.classification === 'NC' ? 'NC Menor' : 'Observación'),
+            status: plan?.status || 'En Implementación',
+            category: idx === 0 ? 'Control de Color CMYK y Tintas Pantone' : 'Control de Desperdicios y Mermas',
+            detectionDescription: nc.finding || '',
+            breachedRequirement: nc.breachedRequirement || 'ISO 9001:2015 Numeral 8.5.1 / ISO 19011:2026',
+            processRisk: idx === 0
+              ? 'Variación cromática durante la tirada, retraso en secado y repinte en pila de hojas.'
+              : 'Sobrecostos de sustrato, descuadre de inventarios y falta de trazabilidad en roturas de papel.',
+            proposedAction: plan?.correctiveAction || 'Establecer verificación obligatoria y calibrar equipos de medición.',
+            responsiblePerson: plan?.responsiblePerson || 'Operario de Prensa y Auditor Técnico',
+            deadline: plan?.commitmentDeadline || '2026-11-20',
+            photos: []
+          };
+        });
+
+  const updateDetailedNC = (id: string, field: keyof DetailedNonConformity, value: any) => {
+    const list = [...effectiveDetailedNCs];
+    const updated = list.map(item => {
+      if (item.id === id) {
+        return { ...item, [field]: value };
+      }
+      return item;
+    });
+
+    // Synchronize with traditional nonConformities and actionPlans
+    const target = updated.find(d => d.id === id);
+    let updatedNCs = [...(reportData.nonConformities || [])];
+    let updatedPlans = [...(reportData.actionPlans || [])];
+
+    if (target) {
+      const ncIndex = updatedNCs.findIndex(nc => nc.id === id || nc.id === target.checklistItemId);
+      const isNc = target.classification.startsWith('NC') || target.classification === 'NC';
+      if (ncIndex >= 0) {
+        updatedNCs[ncIndex] = {
+          ...updatedNCs[ncIndex],
+          finding: target.detectionDescription,
+          breachedRequirement: target.breachedRequirement,
+          classification: isNc ? 'NC' : 'OBS'
+        };
+      } else {
+        updatedNCs.push({
+          id: target.id,
+          finding: target.detectionDescription,
+          breachedRequirement: target.breachedRequirement,
+          classification: isNc ? 'NC' : 'OBS'
+        });
+      }
+
+      const planIndex = updatedPlans.findIndex(p => p.nonConformityId === id || p.nonConformityId === target.checklistItemId || p.id === id);
+      if (planIndex >= 0) {
+        updatedPlans[planIndex] = {
+          ...updatedPlans[planIndex],
+          findingDescription: target.detectionDescription,
+          correctiveAction: target.proposedAction,
+          responsiblePerson: target.responsiblePerson,
+          commitmentDeadline: target.deadline,
+          status: target.status
+        };
+      } else {
+        updatedPlans.push({
+          id: `cap-${target.id}`,
+          nonConformityId: target.id,
+          findingDescription: target.detectionDescription,
+          rootCauseAnalysis: 'Análisis de causa raíz determinado en auditoría',
+          correctiveAction: target.proposedAction,
+          responsiblePerson: target.responsiblePerson,
+          commitmentDeadline: target.deadline,
+          status: target.status
+        });
+      }
+    }
+
+    setReportData({
+      ...reportData,
+      detailedNonConformities: updated,
+      nonConformities: updatedNCs,
+      actionPlans: updatedPlans
+    });
+  };
+
+  const addDetailedNC = () => {
+    const newId = `dnc-${Date.now()}`;
+    const newDNC: DetailedNonConformity = {
+      id: newId,
+      classification: 'NC Menor',
+      status: 'En Implementación',
+      category: 'Operación de Prensa',
+      detectionDescription: '',
+      breachedRequirement: 'ISO 9001:2015 8.5.1 / Estándar Artes Gráficas ISO 12647-2',
+      processRisk: 'Riesgo de reproceso en prensa litográfica y retraso en entrega.',
+      proposedAction: '',
+      responsiblePerson: reportData.targetJob || 'Operario de Prensa Litográfica',
+      deadline: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+      photos: []
+    };
+    const updated = [...effectiveDetailedNCs, newDNC];
+    setReportData({
+      ...reportData,
+      detailedNonConformities: updated,
+      nonConformities: [
+        ...(reportData.nonConformities || []),
+        {
+          id: newId,
+          finding: 'Nueva no conformidad agregada en informe',
+          classification: 'NC',
+          breachedRequirement: newDNC.breachedRequirement
+        }
+      ],
+      actionPlans: [
+        ...(reportData.actionPlans || []),
+        {
+          id: `cap-${Date.now()}`,
+          nonConformityId: newId,
+          findingDescription: 'Nueva no conformidad agregada en informe',
+          rootCauseAnalysis: 'Determinada en auditoría de taller',
+          correctiveAction: '',
+          responsiblePerson: newDNC.responsiblePerson,
+          commitmentDeadline: newDNC.deadline,
+          status: 'En Implementación'
+        }
+      ]
+    });
+  };
+
+  const removeDetailedNC = (id: string) => {
+    const updated = effectiveDetailedNCs.filter(d => d.id !== id);
+    setReportData({
+      ...reportData,
+      detailedNonConformities: updated,
+      nonConformities: (reportData.nonConformities || []).filter(nc => nc.id !== id),
+      actionPlans: (reportData.actionPlans || []).filter(p => p.nonConformityId !== id && p.id !== id)
+    });
+  };
+
+  const updateDetailedNCPhotos = (id: string, photos: AuditPhotoEvidence[]) => {
+    const updated = effectiveDetailedNCs.map(dnc => {
+      if (dnc.id === id) {
+        return { ...dnc, photos };
+      }
+      return dnc;
+    });
+    setReportData({
+      ...reportData,
+      detailedNonConformities: updated
+    });
   };
 
   const addAttendee = () => {
@@ -1339,35 +1509,252 @@ export const OpeningActModule: React.FC<OpeningActModuleProps> = ({
             </div>
           </div>
 
-          {/* Non Conformities */}
-          <div className="border border-slate-800 text-xs">
-            <div className="bg-rose-50 p-2 font-bold uppercase tracking-wider text-rose-900 border-b border-slate-800">
-              NO CONFORMIDADES IDENTIFICADAS EN EL PUESTO DE PRENSA
+          {/* Detailed Non Conformities with 6 Mandatory Fields & Photo Upload */}
+          <div className="border border-slate-800 text-xs overflow-hidden">
+            <div className="bg-rose-50 p-3 font-bold uppercase tracking-wider text-rose-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0" />
+                <span>HALLAZGOS Y NO CONFORMIDADES DETALLADAS DEL PUESTO DE PRENSA</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-200/80 text-rose-900 font-bold">
+                  {effectiveDetailedNCs.length} Registradas
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-rose-800 font-normal hidden sm:inline flex items-center gap-1">
+                  <Link2 className="w-3 h-3 inline text-rose-600" />
+                  Sincronizado con Lista de Chequeo (FO-MCO-19)
+                </span>
+                {isEditing && (
+                  <button
+                    type="button"
+                    onClick={addDetailedNC}
+                    className="px-2.5 py-1 bg-rose-700 text-white rounded text-[11px] font-semibold hover:bg-rose-800 flex items-center gap-1 cursor-pointer no-print"
+                  >
+                    <Plus className="w-3 h-3" />
+                    + Añadir Hallazgo
+                  </button>
+                )}
+              </div>
             </div>
-            <table className="w-full text-left divide-y divide-slate-800">
-              <thead>
-                <tr className="bg-slate-50 font-bold uppercase text-[10px] text-slate-700">
-                  <th className="p-2 border-r border-slate-800">Descripción del Hallazgo</th>
-                  <th className="p-2 w-20 text-center border-r border-slate-800">Tipo</th>
-                  <th className="p-2 w-72">Requisito Incumplido (Norma ISO)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-300">
-                {reportData.nonConformities.map((nc) => (
-                  <tr key={nc.id}>
-                    <td className="p-2.5 text-slate-800 border-r border-slate-800 font-medium">
-                      {nc.finding}
-                    </td>
-                    <td className="p-2.5 text-center font-mono font-bold text-rose-700 border-r border-slate-800">
-                      {nc.classification}
-                    </td>
-                    <td className="p-2.5 text-slate-600">
-                      {nc.breachedRequirement}
-                    </td>
-                  </tr>
+
+            {effectiveDetailedNCs.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 bg-slate-50">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                <p className="font-semibold text-slate-700">No se registran no conformidades activas en el puesto de prensa.</p>
+                <p className="text-[11px] text-slate-500 mt-1">Todos los ítems evaluados en la lista de chequeo cumplen satisfactoriamente con la norma.</p>
+              </div>
+            ) : (
+              <div className="divide-y-2 divide-slate-800 bg-white">
+                {effectiveDetailedNCs.map((dnc, idx) => (
+                  <div key={dnc.id} className="p-4 space-y-3.5 bg-white">
+                    {/* Header Strip of Non Conformity */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 bg-slate-900 text-white font-mono font-bold rounded text-[11px]">
+                          Hallazgo #{idx + 1}
+                        </span>
+                        {dnc.itemNumber ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded text-[10px] font-medium">
+                            <Link2 className="w-3 h-3 text-indigo-600" />
+                            Ítem #{dnc.itemNumber} de Lista FO-MCO-19
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-slate-100 border border-slate-300 text-slate-700 rounded text-[10px] font-medium">
+                            Registro directo en Informe
+                          </span>
+                        )}
+                        {dnc.category && (
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-medium">
+                            {dnc.category}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {isEditing ? (
+                          <>
+                            <select
+                              value={dnc.classification}
+                              onChange={(e) => updateDetailedNC(dnc.id, 'classification', e.target.value as any)}
+                              className="p-1 border border-rose-300 rounded text-xs font-bold bg-rose-50 text-rose-900"
+                            >
+                              <option value="NC Mayor">NC Mayor</option>
+                              <option value="NC Menor">NC Menor</option>
+                              <option value="Observación">Observación</option>
+                            </select>
+                            <select
+                              value={dnc.status}
+                              onChange={(e) => updateDetailedNC(dnc.id, 'status', e.target.value as any)}
+                              className="p-1 border border-amber-300 rounded text-xs font-bold bg-amber-50 text-amber-900"
+                            >
+                              <option value="Abierta">Abierta</option>
+                              <option value="En Implementación">En Implementación</option>
+                              <option value="Cerrada">Cerrada</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => removeDetailedNC(dnc.id)}
+                              className="p-1 text-rose-600 hover:text-rose-800 rounded hover:bg-rose-50 no-print"
+                              title="Eliminar este hallazgo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              {dnc.classification}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                              {dnc.status}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* The 6 Mandatory Fields Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Field 1: Descripción de cómo se detectó el hallazgo */}
+                      <div className="md:col-span-2 bg-slate-50 border border-slate-300 rounded-md p-3">
+                        <label className="block text-[11px] font-bold uppercase text-slate-800 mb-1 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-slate-800 text-white inline-flex items-center justify-center text-[10px] font-mono">1</span>
+                          Descripción de cómo se detectó el hallazgo (Evidencia Objetiva):
+                        </label>
+                        {isEditing ? (
+                          <textarea
+                            rows={3}
+                            value={dnc.detectionDescription}
+                            onChange={(e) => updateDetailedNC(dnc.id, 'detectionDescription', e.target.value)}
+                            placeholder="Detalle exactamente cómo el auditor detectó la desviación en el puesto de prensa..."
+                            className="w-full p-2 border border-slate-300 rounded text-xs bg-white focus:ring-1 focus:ring-rose-500 text-slate-800"
+                          />
+                        ) : (
+                          <p className="text-slate-800 leading-relaxed font-medium bg-white p-2.5 border border-slate-200 rounded text-xs">
+                            {dnc.detectionDescription || 'Sin descripción detallada registrada.'}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Field 2: Norma o requisito técnico incumplido */}
+                      <div className="bg-slate-50 border border-slate-300 rounded-md p-3">
+                        <label className="block text-[11px] font-bold uppercase text-slate-800 mb-1 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-slate-800 text-white inline-flex items-center justify-center text-[10px] font-mono">2</span>
+                          Norma o Requisito Técnico Incumplido:
+                        </label>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={dnc.breachedRequirement}
+                            onChange={(e) => updateDetailedNC(dnc.id, 'breachedRequirement', e.target.value)}
+                            placeholder="Ej: ISO 9001:2015 8.5.1 / Estándar ISO 12647-2..."
+                            className="w-full p-2 border border-slate-300 rounded text-xs bg-white text-slate-800 font-mono"
+                          />
+                        ) : (
+                          <div className="bg-white p-2 border border-slate-200 rounded font-mono text-xs text-rose-900 font-semibold">
+                            {dnc.breachedRequirement || 'Requisito no especificado'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Field 3: Riesgo asociado para el proceso de prensa */}
+                      <div className="bg-amber-50/70 border border-amber-300 rounded-md p-3">
+                        <label className="block text-[11px] font-bold uppercase text-amber-950 mb-1 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-amber-800 text-white inline-flex items-center justify-center text-[10px] font-mono">3</span>
+                          Riesgo Asociado para el Proceso de Prensa:
+                        </label>
+                        {isEditing ? (
+                          <textarea
+                            rows={2}
+                            value={dnc.processRisk}
+                            onChange={(e) => updateDetailedNC(dnc.id, 'processRisk', e.target.value)}
+                            placeholder="Impacto directo en máquina, sustrato, merma de papel, tono o seguridad..."
+                            className="w-full p-2 border border-amber-300 rounded text-xs bg-white text-amber-950"
+                          />
+                        ) : (
+                          <div className="bg-white p-2 border border-amber-200 rounded text-xs text-amber-950 font-medium">
+                            {dnc.processRisk || 'No se definió el impacto de riesgo para la prensa litográfica.'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Field 4: Propuesta de solución o acción correctiva */}
+                      <div className="md:col-span-2 bg-indigo-50/60 border border-indigo-200 rounded-md p-3">
+                        <label className="block text-[11px] font-bold uppercase text-indigo-950 mb-1 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-indigo-800 text-white inline-flex items-center justify-center text-[10px] font-mono">4</span>
+                          Propuesta de Solución o Acción Correctiva:
+                        </label>
+                        {isEditing ? (
+                          <textarea
+                            rows={2}
+                            value={dnc.proposedAction}
+                            onChange={(e) => updateDetailedNC(dnc.id, 'proposedAction', e.target.value)}
+                            placeholder="Acción correctiva acordada con el prensista para subsanar la causa raíz..."
+                            className="w-full p-2 border border-indigo-300 rounded text-xs bg-white text-slate-800"
+                          />
+                        ) : (
+                          <div className="bg-white p-2.5 border border-indigo-200 rounded text-xs text-slate-800 font-medium leading-relaxed">
+                            {dnc.proposedAction || 'Pendiente de acordar propuesta de solución.'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Field 5: Responsable asignado */}
+                      <div className="bg-slate-50 border border-slate-300 rounded-md p-3">
+                        <label className="block text-[11px] font-bold uppercase text-slate-800 mb-1 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-slate-800 text-white inline-flex items-center justify-center text-[10px] font-mono">5</span>
+                          Responsable Asignado para Cierre:
+                        </label>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={dnc.responsiblePerson}
+                            onChange={(e) => updateDetailedNC(dnc.id, 'responsiblePerson', e.target.value)}
+                            placeholder="Nombre y cargo del responsable..."
+                            className="w-full p-2 border border-slate-300 rounded text-xs bg-white text-slate-800"
+                          />
+                        ) : (
+                          <div className="bg-white p-2 border border-slate-200 rounded text-xs font-semibold text-slate-800">
+                            {dnc.responsiblePerson || 'Sin responsable asignado'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Field 6: Fecha límite de plazo */}
+                      <div className="bg-slate-50 border border-slate-300 rounded-md p-3">
+                        <label className="block text-[11px] font-bold uppercase text-slate-800 mb-1 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-slate-800 text-white inline-flex items-center justify-center text-[10px] font-mono">6</span>
+                          Fecha Límite de Plazo de Implementación:
+                        </label>
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            value={dnc.deadline}
+                            onChange={(e) => updateDetailedNC(dnc.id, 'deadline', e.target.value)}
+                            className="w-full p-2 border border-slate-300 rounded text-xs bg-white text-slate-800 font-mono"
+                          />
+                        ) : (
+                          <div className="bg-white p-2 border border-slate-200 rounded text-xs font-mono font-bold text-slate-800 flex items-center gap-2">
+                            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                            {dnc.deadline || 'Plazo por definir'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Photographic Evidence attached to this Non Conformity */}
+                    <div className="pt-2">
+                      <PhotoEvidenceUploader
+                        photos={dnc.photos || []}
+                        onChange={(photos: AuditPhotoEvidence[]) => updateDetailedNCPhotos(dnc.id, photos)}
+                        readOnly={!isEditing}
+                        label={`Evidencias Fotográficas del Hallazgo #${idx + 1}`}
+                      />
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
 
           {/* Corrective Action Plans Table */}

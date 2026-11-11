@@ -793,7 +793,15 @@ export const INITIAL_CHECKLIST: AuditChecklist = {
       aspectToVerify: '¿Para tintas directas Pantone, el operario verifica la formulación y tonalidad sobre el sustrato real antes de dar marcha al tiro?',
       isCompliant: false,
       evidenceObservation: 'En la OP-2026-0843 se inició el tiro preliminar de Pantone 871 C sin corroborar la viscosidad con copa Zahn.',
-      recommendation: 'No Conformidad Menor: Estandarizar la medición de viscosidad previa para tintas metalizadas.'
+      recommendation: 'No Conformidad Menor: Estandarizar la medición de viscosidad previa para tintas metalizadas.',
+      detectionDescription: 'Durante el arranque de la tirada en OP-2026-0843, se observó que el prensista dosificó la tinta Pantone 871 C directo del envase a la tolva sin medición previa de viscosidad con copa Zahn #3 ni verificación de tolerancia cromática en pliego de prueba.',
+      breachedRequirement: 'ISO 9001:2015 Numeral 8.5.1 (Control de la producción) y Procedimiento PR-PRE-01 / Estándar ISO 12647-2',
+      processRisk: 'Variación de tonalidad durante la tirada continua, repinte de pliegos en pila por exceso de viscosidad y retraso en secado oxidativo.',
+      proposedAction: 'Dotar la mesa de control con copa Zahn #3 calibrada y capacitar a los prensistas en la medición de viscosidad en segundos (22-26s) previo al entintado.',
+      responsiblePerson: 'Carlos Eduardo Rivas (Auditor Técnico) y Jorge Valderrama (Prensista)',
+      deadline: '2026-11-20',
+      classification: 'NC Menor',
+      photos: []
     },
     {
       id: 'chk-11',
@@ -867,7 +875,15 @@ export const INITIAL_CHECKLIST: AuditChecklist = {
       aspectToVerify: '¿El operario registra en la bitácora la causa de cualquier merma superior al porcentaje presupuestado (e.g. rotura de papel, descalce)?',
       isCompliant: false,
       evidenceObservation: 'En la OP-2026-0843 no se diligenció en el software la causa del exceso de merma de 1.2% durante el arranque del Pantone.',
-      recommendation: 'No Conformidad: Implementar obligatoriedad de justificar mermas mayores al 5% antes de cerrar la orden en el ERP.'
+      recommendation: 'No Conformidad: Implementar obligatoriedad de justificar mermas mayores al 5% antes de cerrar la orden en el ERP.',
+      detectionDescription: 'Se constató en la terminal del ERP de la consola Heidelberg que la OP-2026-0843 generó 420 pliegos de merma de arranque (6.2% vs 5.0% autorizado) sin que el prensista registrara el motivo de la desviación.',
+      breachedRequirement: 'ISO 9001:2015 Numeral 8.5.2 (Identificación y trazabilidad de mermas)',
+      processRisk: 'Sobrecostos de papel esmaltado, descuadre de inventario de bodega y falta de trazabilidad en las causas reales de rechazo.',
+      proposedAction: 'Configurar el sistema ERP para requerir campo obligatorio de causa de merma cuando supere el 5% y reentrenar a los prensistas en la bitácora digital.',
+      responsiblePerson: 'Claudia Restrepo (Costos) y Jorge Valderrama',
+      deadline: '2026-11-18',
+      classification: 'NC Menor',
+      photos: []
     },
 
     // 6. Normas de Seguridad Industrial y EPP
@@ -949,6 +965,38 @@ export const INITIAL_FINAL_REPORT: FinalAuditReport = {
       finding: 'No se registró en el módulo de taller del ERP la justificación de la merma de arranque del 1.2% por encima del estándar en la máquina Heidelberg.',
       classification: 'NC',
       breachedRequirement: 'ISO 9001:2015 Numeral 8.5.2 (Identificación y trazabilidad de mermas)'
+    }
+  ],
+  detailedNonConformities: [
+    {
+      id: 'dnc-01',
+      checklistItemId: 'chk-10',
+      itemNumber: 10,
+      classification: 'NC Menor',
+      status: 'En Implementación',
+      category: 'Control de Color CMYK y Tintas Pantone',
+      detectionDescription: 'Durante el arranque de la tirada en OP-2026-0843, se observó que el prensista dosificó la tinta Pantone 871 C directo del envase a la tolva sin medición previa de viscosidad con copa Zahn #3 ni verificación de tolerancia cromática en pliego de prueba.',
+      breachedRequirement: 'ISO 9001:2015 Numeral 8.5.1 (Control de la producción) y Procedimiento PR-PRE-01 / Estándar ISO 12647-2',
+      processRisk: 'Variación de tonalidad durante la tirada continua, repinte de pliegos en pila por exceso de viscosidad y retraso en secado oxidativo.',
+      proposedAction: 'Dotar la mesa de control con copa Zahn #3 calibrada y capacitar a los prensistas en la medición de viscosidad en segundos (22-26s) previo al entintado.',
+      responsiblePerson: 'Carlos Eduardo Rivas (Auditor Técnico) y Jorge Valderrama (Prensista)',
+      deadline: '2026-11-20',
+      photos: []
+    },
+    {
+      id: 'dnc-02',
+      checklistItemId: 'chk-17',
+      itemNumber: 17,
+      classification: 'NC Menor',
+      status: 'En Implementación',
+      category: 'Control de Desperdicios y Mermas',
+      detectionDescription: 'Se constató en la terminal del ERP de la consola Heidelberg que la OP-2026-0843 generó 420 pliegos de merma de arranque (6.2% vs 5.0% autorizado) sin que el prensista registrara el motivo de la desviación.',
+      breachedRequirement: 'ISO 9001:2015 Numeral 8.5.2 (Identificación y trazabilidad de mermas)',
+      processRisk: 'Sobrecostos de papel esmaltado, descuadre de inventario de bodega y falta de trazabilidad en las causas reales de rechazo.',
+      proposedAction: 'Configurar el sistema ERP para requerir campo obligatorio de causa de merma cuando supere el 5% y reentrenar a los prensistas en la bitácora digital.',
+      responsiblePerson: 'Claudia Restrepo (Costos) y Jorge Valderrama',
+      deadline: '2026-11-18',
+      photos: []
     }
   ],
   improvementOpportunities: [

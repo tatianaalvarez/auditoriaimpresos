@@ -22,11 +22,17 @@ import {
   Layers,
   Palette,
   ShieldCheck,
-  Check
+  Check,
+  AlertTriangle,
+  Zap,
+  Camera,
+  RefreshCw,
+  FileText
 } from 'lucide-react';
-import { AuditChecklist, ChecklistItem, PressAuditCategory } from '../types/audit';
+import { AuditChecklist, ChecklistItem, PressAuditCategory, AuditPhotoEvidence } from '../types/audit';
 import { DigitalSignatureModal } from './DigitalSignatureModal';
 import { DocumentHeader } from './DocumentHeader';
+import { PhotoEvidenceUploader } from './PhotoEvidenceUploader';
 
 interface ChecklistModuleProps {
   checklist: AuditChecklist;
@@ -74,11 +80,60 @@ export const ChecklistModule: React.FC<ChecklistModuleProps> = ({
   const toggleCompliance = (itemId: string, newStatus: boolean | null) => {
     const updatedItems = data.items.map(item => {
       if (item.id === itemId) {
+        if (newStatus === false) {
+          // Pre-populate the 6 mandatory fields with meaningful technical defaults if empty
+          return {
+            ...item,
+            isCompliant: false,
+            detectionDescription: item.detectionDescription || item.evidenceObservation ||
+              `Constatado durante la evaluación en prensa: ${item.aspectToVerify}`,
+            breachedRequirement: item.breachedRequirement || item.criterion,
+            processRisk: item.processRisk ||
+              (item.category.includes('Color')
+                ? 'Variación tonal Delta E > 3.0 en pliegos, desbalance agua-tinta y rechazo del lote.'
+                : item.category.includes('Planchas')
+                ? 'Rayado de planchas CTP, paradas no programadas y desperdicio de sustrato.'
+                : item.category.includes('Registro')
+                ? 'Fuera de registro cuatricromía (> 0.05 mm), pliegos borrosos e inservibles.'
+                : item.category.includes('Seguridad')
+                ? 'Riesgo de accidente con cilindros en rotación o derrame de solventes.'
+                : 'Desviación en calidad de impresión, merma excesiva y sobrecosto productivo.'),
+            proposedAction: item.proposedAction || item.recommendation ||
+              'Detener el tiraje, calibrar parámetros en máquina y registrar ajuste en hoja de ruta.',
+            responsiblePerson: item.responsiblePerson || `${data.auditeeName} (Operario de Prensa)`,
+            deadline: item.deadline || '2026-03-01',
+            photos: item.photos || []
+          };
+        }
         return { ...item, isCompliant: newStatus };
       }
       return item;
     });
 
+    const updated = { ...data, items: updatedItems };
+    setData(updated);
+    onSaveChecklist(updated);
+  };
+
+  const updateDetailedFindingField = (itemId: string, field: keyof ChecklistItem, value: any) => {
+    const updatedItems = data.items.map(item => {
+      if (item.id === itemId) {
+        return { ...item, [field]: value };
+      }
+      return item;
+    });
+    const updated = { ...data, items: updatedItems };
+    setData(updated);
+    onSaveChecklist(updated);
+  };
+
+  const updateItemPhotos = (itemId: string, photos: AuditPhotoEvidence[]) => {
+    const updatedItems = data.items.map(item => {
+      if (item.id === itemId) {
+        return { ...item, photos };
+      }
+      return item;
+    });
     const updated = { ...data, items: updatedItems };
     setData(updated);
     onSaveChecklist(updated);
@@ -261,6 +316,36 @@ export const ChecklistModule: React.FC<ChecklistModuleProps> = ({
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Dynamic Data-Binding & Checklist-to-Report Flow Banner */}
+      <div className="bg-gradient-to-r from-indigo-50/90 via-sky-50/60 to-indigo-50/80 border border-indigo-200/90 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-indigo-950 no-print shadow-2xs">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="p-2 bg-indigo-600 text-white rounded-lg shrink-0 mt-0.5 sm:mt-0 shadow-xs">
+            <Zap className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                Conexión en Vivo con Informe Final (FO-MCO-22) y Sincronización Automática
+              </span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                Data Binding Activo
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+              • Los ítems marcados con respuesta <strong className="text-rose-700">"No"</strong> se transfieren automáticamente al Informe Final con sus 6 campos técnicos estructurados y fotos adjuntas.<br/>
+              • Cualquier cambio en el operario evaluado, máquina o fechas se sincroniza en cascada en las actas y plan de auditoría.
+            </p>
+          </div>
+        </div>
+
+        {nonCompliantCount > 0 && (
+          <div className="bg-rose-100 border border-rose-300 text-rose-900 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 text-rose-600" />
+            <span>{nonCompliantCount} No Conformidad(es) fluyendo al Informe</span>
+          </div>
+        )}
       </div>
 
       {/* Main Checklist Document Container - FO-MCO-19 Standard Layout */}
@@ -590,9 +675,9 @@ export const ChecklistModule: React.FC<ChecklistModuleProps> = ({
 
                   {/* Observations and Objective Evidence */}
                   <td className="p-3 align-top">
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <textarea
-                        rows={3}
+                        rows={2}
                         value={item.evidenceObservation}
                         onChange={(e) => updateObservation(item.id, e.target.value)}
                         placeholder="Escriba aquí la evidencia objetiva observada en prensa (pliego testigo, medición espectral, registro, EPP)..."
@@ -636,6 +721,123 @@ export const ChecklistModule: React.FC<ChecklistModuleProps> = ({
                           + EPP Cumplido
                         </button>
                       </div>
+
+                      {/* Estructura Detallada Obligatoria cuando se marca NO (Alimenta automáticamente el Informe Final) */}
+                      {item.isCompliant === false && (
+                        <div className="mt-3 p-3 bg-rose-50/80 border border-rose-300 rounded-lg space-y-2.5 text-xs text-slate-800">
+                          <div className="flex items-center justify-between pb-1.5 border-b border-rose-200">
+                            <span className="font-bold text-rose-900 flex items-center gap-1.5 text-[11px] uppercase tracking-wide">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span>No Conformidad Registrada (Fluye al Informe Final FO-MCO-22)</span>
+                            </span>
+                            <span className="text-[10px] bg-rose-200/80 text-rose-900 font-mono font-bold px-1.5 py-0.5 rounded">
+                              Auto-Sync
+                            </span>
+                          </div>
+
+                          {/* 1. Descripción de cómo se detectó el hallazgo */}
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+                              1. Descripción de cómo se detectó el hallazgo:
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={item.detectionDescription ?? (item.evidenceObservation || '')}
+                              onChange={(e) => updateDetailedFindingField(item.id, 'detectionDescription', e.target.value)}
+                              placeholder="Describa el hecho específico detectado en la máquina o en el producto..."
+                              className="w-full p-2 text-xs bg-white border border-rose-300 focus:border-rose-500 rounded-md shadow-2xs leading-relaxed"
+                            />
+                          </div>
+
+                          {/* 2. Requisito y 3. Riesgo */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+                                2. Requisito incumplido (ISO 19011 / Artes Gráficas):
+                              </label>
+                              <input
+                                type="text"
+                                value={item.breachedRequirement ?? item.criterion}
+                                onChange={(e) => updateDetailedFindingField(item.id, 'breachedRequirement', e.target.value)}
+                                placeholder="ej. ISO 12647-2 Numeral 4.3 / ISO 9001:2015 8.5.1"
+                                className="w-full p-1.5 text-xs bg-white border border-rose-300 focus:border-rose-500 rounded-md font-mono"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+                                3. Riesgo asociado para el proceso de prensa:
+                              </label>
+                              <input
+                                type="text"
+                                value={item.processRisk ?? ''}
+                                onChange={(e) => updateDetailedFindingField(item.id, 'processRisk', e.target.value)}
+                                placeholder="ej. Variación tonal Delta E > 3.0, merma excesiva..."
+                                className="w-full p-1.5 text-xs bg-white border border-rose-300 focus:border-rose-500 rounded-md"
+                              />
+                            </div>
+                          </div>
+
+                          {/* 4. Solución, 5. Responsable, 6. Plazo */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div className="sm:col-span-1">
+                              <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+                                4. Acción correctiva propuesta:
+                              </label>
+                              <input
+                                type="text"
+                                value={item.proposedAction ?? (item.recommendation || '')}
+                                onChange={(e) => updateDetailedFindingField(item.id, 'proposedAction', e.target.value)}
+                                placeholder="ej. Detener tiraje y recalibrar tintas..."
+                                className="w-full p-1.5 text-xs bg-white border border-rose-300 focus:border-rose-500 rounded-md"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+                                5. Responsable asignado:
+                              </label>
+                              <input
+                                type="text"
+                                value={item.responsiblePerson ?? `${data.auditeeName} (Prensista)`}
+                                onChange={(e) => updateDetailedFindingField(item.id, 'responsiblePerson', e.target.value)}
+                                placeholder="Nombre o cargo del responsable..."
+                                className="w-full p-1.5 text-xs bg-white border border-rose-300 focus:border-rose-500 rounded-md"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+                                6. Fecha límite de plazo:
+                              </label>
+                              <input
+                                type="date"
+                                value={item.deadline ?? '2026-03-01'}
+                                onChange={(e) => updateDetailedFindingField(item.id, 'deadline', e.target.value)}
+                                className="w-full p-1.5 text-xs bg-white border border-rose-300 focus:border-rose-500 rounded-md font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Componente de Carga de Evidencias Fotográficas */}
+                          <PhotoEvidenceUploader
+                            photos={item.photos || []}
+                            onChange={(photos) => updateItemPhotos(item.id, photos)}
+                            label="Evidencias Fotográficas del Hallazgo en Prensa"
+                          />
+                        </div>
+                      )}
+
+                      {/* Componente de Carga de Evidencias para ítems Conformidad/Pendiente */}
+                      {item.isCompliant !== false && (
+                        <div className="mt-1">
+                          <PhotoEvidenceUploader
+                            photos={item.photos || []}
+                            onChange={(photos) => updateItemPhotos(item.id, photos)}
+                            label="Evidencias Fotográficas de la Verificación (Opcional)"
+                          />
+                        </div>
+                      )}
                     </div>
                   </td>
 

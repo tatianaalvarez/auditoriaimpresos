@@ -78,19 +78,95 @@ export default function App() {
 
   const handleSavePlan = (auditPlan: AuditPlan) => {
     if (!auditState) return;
-    triggerPersist({
-      ...auditState,
-      auditPlan
-    });
+    const prevPlan = auditState.auditPlan;
+    const generalChanged =
+      auditPlan.auditeeLeaderName !== prevPlan.auditeeLeaderName ||
+      auditPlan.auditeeLeaderJobTitle !== prevPlan.auditeeLeaderJobTitle ||
+      auditPlan.auditCycle !== prevPlan.auditCycle;
+
+    if (generalChanged) {
+      const { newState, updatedDocs } = dataBindingService.cascadeGeneralAuditInfo(auditState, {
+        auditeeName: auditPlan.auditeeLeaderName,
+        auditeeJobTitle: auditPlan.auditeeLeaderJobTitle,
+        cycle: auditPlan.auditCycle
+      });
+      setToastNotification({
+        type: 'cascade',
+        message: `Sincronización Automática: Plan de Auditoría`,
+        subMessage: `Datos actualizados en cascada en: ${updatedDocs.join(' · ')}`
+      });
+      triggerPersist({ ...newState, auditPlan });
+    } else {
+      triggerPersist({
+        ...auditState,
+        auditPlan
+      });
+    }
   };
 
-  // Checklist handler
+  // Checklist handler with automatic flow of No-Conformities to Final Report and General Data Sync
   const handleSaveChecklist = (checklist: AuditChecklist) => {
     if (!auditState) return;
-    triggerPersist({
-      ...auditState,
-      checklist
-    });
+
+    const prevChecklist = auditState.checklist;
+    const generalChanged =
+      checklist.auditeeName !== prevChecklist.auditeeName ||
+      checklist.auditeeJobTitle !== prevChecklist.auditeeJobTitle ||
+      checklist.pressMachine !== prevChecklist.pressMachine ||
+      checklist.auditDate !== prevChecklist.auditDate ||
+      checklist.cycle !== prevChecklist.cycle;
+
+    let intermediateState = auditState;
+    let docsSynced: string[] = [];
+
+    if (generalChanged) {
+      const cascadeRes = dataBindingService.cascadeGeneralAuditInfo(auditState, {
+        auditeeName: checklist.auditeeName,
+        auditeeJobTitle: checklist.auditeeJobTitle,
+        pressMachine: checklist.pressMachine,
+        auditDate: checklist.auditDate,
+        cycle: checklist.cycle
+      });
+      intermediateState = cascadeRes.newState;
+      docsSynced = cascadeRes.updatedDocs;
+    }
+
+    // Automatically sync non-conformities ("No") and photo evidence from checklist to Final Audit Report
+    const updatedReport = dataBindingService.syncChecklistToFinalReport(
+      checklist,
+      intermediateState.finalReport
+    );
+
+    const ncCount = checklist.items.filter(i => i.isCompliant === false).length;
+
+    const nextState: AppAuditState = {
+      ...intermediateState,
+      checklist,
+      finalReport: updatedReport,
+      lastPersisted: new Date().toISOString()
+    };
+
+    if (generalChanged) {
+      setToastNotification({
+        type: 'cascade',
+        message: `Sincronización Automática: Operario "${checklist.auditeeName}" y Máquina`,
+        subMessage: `Datos actualizados en cascada en: ${docsSynced.join(' · ')}`
+      });
+    } else if (ncCount > 0) {
+      setToastNotification({
+        type: 'cascade',
+        message: `Conexión Lista de Chequeo ➔ Informe Final`,
+        subMessage: `${ncCount} no conformidad(es) con causas, riesgos y fotos fluyeron al Informe Final (FO-MCO-22)`
+      });
+    } else {
+      setToastNotification({
+        type: 'save',
+        message: `Lista de Chequeo guardada exitosamente`,
+        subMessage: 'Verificaciones técnicas de prensa y evidencias fotográficas persistidas'
+      });
+    }
+
+    triggerPersist(nextState);
   };
 
   // Auditor handlers with Reactive Cascade Data Binding (ISO 19011:2026)
@@ -199,26 +275,91 @@ export default function App() {
   // Acts & Reports handlers
   const handleSaveOpeningAct = (openingAct: OpeningAct) => {
     if (!auditState) return;
-    triggerPersist({
-      ...auditState,
-      openingAct
-    });
+    const prevAct = auditState.openingAct;
+    const generalChanged =
+      openingAct.auditeeLeaderName !== prevAct.auditeeLeaderName ||
+      openingAct.auditeeLeaderJobTitle !== prevAct.auditeeLeaderJobTitle ||
+      openingAct.date !== prevAct.date ||
+      openingAct.auditCycle !== prevAct.auditCycle;
+
+    if (generalChanged) {
+      const { newState, updatedDocs } = dataBindingService.cascadeGeneralAuditInfo(auditState, {
+        auditeeName: openingAct.auditeeLeaderName,
+        auditeeJobTitle: openingAct.auditeeLeaderJobTitle,
+        auditDate: openingAct.date,
+        cycle: openingAct.auditCycle
+      });
+      setToastNotification({
+        type: 'cascade',
+        message: `Sincronización Automática: Acta de Apertura`,
+        subMessage: `Datos actualizados en cascada en: ${updatedDocs.join(' · ')}`
+      });
+      triggerPersist({ ...newState, openingAct });
+    } else {
+      triggerPersist({
+        ...auditState,
+        openingAct
+      });
+    }
   };
 
   const handleSaveClosingAct = (closingAct: ClosingAct) => {
     if (!auditState) return;
-    triggerPersist({
-      ...auditState,
-      closingAct
-    });
+    const prevAct = auditState.closingAct;
+    const generalChanged =
+      closingAct.auditeeLeaderName !== prevAct.auditeeLeaderName ||
+      closingAct.auditeeLeaderJobTitle !== prevAct.auditeeLeaderJobTitle ||
+      closingAct.date !== prevAct.date;
+
+    if (generalChanged) {
+      const { newState, updatedDocs } = dataBindingService.cascadeGeneralAuditInfo(auditState, {
+        auditeeName: closingAct.auditeeLeaderName,
+        auditeeJobTitle: closingAct.auditeeLeaderJobTitle,
+        auditDate: closingAct.date
+      });
+      setToastNotification({
+        type: 'cascade',
+        message: `Sincronización Automática: Acta de Cierre`,
+        subMessage: `Datos actualizados en cascada en: ${updatedDocs.join(' · ')}`
+      });
+      triggerPersist({ ...newState, closingAct });
+    } else {
+      triggerPersist({
+        ...auditState,
+        closingAct
+      });
+    }
   };
 
   const handleSaveFinalReport = (finalReport: FinalAuditReport) => {
     if (!auditState) return;
-    triggerPersist({
-      ...auditState,
-      finalReport
-    });
+    const prevReport = auditState.finalReport;
+    const dateChanged = finalReport.auditDate !== prevReport?.auditDate;
+
+    if (dateChanged) {
+      const { newState, updatedDocs } = dataBindingService.cascadeGeneralAuditInfo(auditState, {
+        auditDate: finalReport.auditDate
+      });
+      setToastNotification({
+        type: 'cascade',
+        message: `Informe Final (FO-MCO-22) guardado`,
+        subMessage: `Hallazgos y fechas actualizados en cascada en: ${updatedDocs.join(' · ')}`
+      });
+      triggerPersist({
+        ...newState,
+        finalReport
+      });
+    } else {
+      setToastNotification({
+        type: 'save',
+        message: `Informe Final (FO-MCO-22) guardado`,
+        subMessage: 'Hallazgos, no conformidades estructuradas y planes de acción persistidos exitosamente'
+      });
+      triggerPersist({
+        ...auditState,
+        finalReport
+      });
+    }
   };
 
   // Backup & Restore

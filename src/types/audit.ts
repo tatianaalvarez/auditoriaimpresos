@@ -288,15 +288,48 @@ export interface AuditProgram {
   leadAuditorSignature?: string;
 }
 
+export interface AuditPhotoEvidence {
+  id: string;
+  dataUrl: string; // Base64 image
+  caption?: string; // Descripción de la evidencia fotográfica
+  timestamp?: string;
+  name?: string;
+}
+
+export interface DetailedNonConformity {
+  id: string;
+  checklistItemId?: string; // Vinculación con el ítem de la lista de chequeo
+  itemNumber?: number;
+  detectionDescription: string; // 1. Descripción de cómo se detectó el hallazgo
+  breachedRequirement: string;  // 2. Norma o requisito técnico incumplido (ISO 19011 o artes gráficas)
+  processRisk: string;          // 3. Riesgo asociado para el proceso de prensa
+  proposedAction: string;       // 4. Propuesta de solución o acción correctiva
+  responsiblePerson: string;    // 5. Responsable asignado
+  deadline: string;             // 6. Fecha límite de plazo
+  classification: 'NC' | 'OBS' | 'NC Mayor' | 'NC Menor' | 'Observación'; // No Conformidad u Observación
+  photos: AuditPhotoEvidence[]; // Evidencias fotográficas adjuntas
+  status: 'Pendiente' | 'En Implementación' | 'Eficaz y Cerrada' | 'Abierta' | 'Cerrada';
+  category?: string;            // Categoría técnica en prensa
+}
+
 export interface ChecklistItem {
   id: string;
   itemNumber: number;
   category: PressAuditCategory;
   criterion: string; // e.g., "ISO 9001:2015 8.5.1 / F-OPE-04"
   aspectToVerify: string;
-  isCompliant: boolean | null; // true: Conforme, false: No Conforme, null: Pendiente
+  isCompliant: boolean | null; // true: Conforme (Sí), false: No Conforme (No), null: Pendiente
   evidenceObservation: string;
   recommendation?: string;
+  // Campos estructurados obligatorios cuando se registra No Conformidad ("No")
+  detectionDescription?: string;
+  breachedRequirement?: string;
+  processRisk?: string;
+  proposedAction?: string;
+  responsiblePerson?: string;
+  deadline?: string;
+  classification?: 'NC' | 'OBS' | 'NC Mayor' | 'NC Menor' | 'Observación';
+  photos?: AuditPhotoEvidence[];
 }
 
 export interface AuditChecklist {
@@ -329,7 +362,7 @@ export interface CorrectiveActionPlan {
   responsiblePerson: string;
   commitmentDeadline: string;
   verificationDate?: string;
-  status: 'Pendiente' | 'En Implementación' | 'Eficaz y Cerrada';
+  status: 'Pendiente' | 'En Implementación' | 'Eficaz y Cerrada' | 'Abierta' | 'Cerrada';
 }
 
 export interface FinalReportFinding {
@@ -356,6 +389,7 @@ export interface FinalAuditReport {
   interviewedPersonnel: string[];
   favorableAspects: string[];
   nonConformities: FinalReportFinding[];
+  detailedNonConformities?: DetailedNonConformity[]; // Hallazgos detallados alimentados desde la lista de chequeo
   improvementOpportunities: { opportunity: string; standardClause: string }[];
   actionPlans: CorrectiveActionPlan[];
   conclusions: string;
